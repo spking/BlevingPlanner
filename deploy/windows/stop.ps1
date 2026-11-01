@@ -1,6 +1,8 @@
-#Requires -RunAsAdministrator
 # Stops the meal planner (the scheduled task and its Node process).
 param([switch]$Quiet)
+
+. (Join-Path $PSScriptRoot 'elevate.ps1')
+if (Restart-Elevated $PSCommandPath $PSBoundParameters) { exit }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $task = Get-ScheduledTask -TaskName 'BlevingPlanner' -ErrorAction SilentlyContinue
 if ($task) { Stop-ScheduledTask -TaskName 'BlevingPlanner' -ErrorAction SilentlyContinue }

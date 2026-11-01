@@ -1,11 +1,10 @@
-#Requires -RunAsAdministrator
 <#
   Sets the meal planner up to run on this PC permanently:
     - "BlevingPlanner"         starts the app at boot (no login needed) and restarts it if it crashes
     - "BlevingPlanner backup"  makes a backup of the database every night
   Safe to run again (it replaces the tasks).
 
-  Usage (in PowerShell opened with "Run as administrator", from the project folder):
+  Usage (from the project folder; it asks for administrator rights itself if needed):
     powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1
   Options:
     -BackupTime 03:30     when the nightly backup runs
@@ -15,13 +14,16 @@ param(
     [string]$BackupTime = '03:30',
     [switch]$KeepAwake
 )
+
+. (Join-Path $PSScriptRoot 'elevate.ps1')
+if (Restart-Elevated $PSCommandPath $PSBoundParameters) { exit }
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 # --- Checks -------------------------------------------------------------
 $nodeCmd = Get-Command node.exe -ErrorAction SilentlyContinue
 if (-not $nodeCmd) {
-    throw 'Node.js was not found. Install the LTS version from https://nodejs.org, then open a NEW administrator PowerShell window and run this again.'
+    throw 'Node.js was not found. Install the LTS version from https://nodejs.org, then open a NEW PowerShell window and run this again.'
 }
 $node = $nodeCmd.Source
 $version = [version]((& $node --version).Trim().TrimStart('v'))

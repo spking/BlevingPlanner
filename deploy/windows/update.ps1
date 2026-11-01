@@ -1,5 +1,8 @@
-#Requires -RunAsAdministrator
 # Pulls the latest version from GitHub and restarts the app. Your data and config.env are not touched.
+param()
+
+. (Join-Path $PSScriptRoot 'elevate.ps1')
+if (Restart-Elevated $PSCommandPath $PSBoundParameters) { exit }
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $root

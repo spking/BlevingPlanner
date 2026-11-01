@@ -65,7 +65,7 @@ Set:
 
 ## 5. Install it as a background task
 
-Open **PowerShell as administrator** (Start → type PowerShell → *Run as administrator*):
+Open PowerShell (an ordinary window is fine). The script asks Windows for administrator rights itself: click **Yes** on the prompt, and it carries on in a new window.
 
 ```powershell
 cd C:\BlevingPlanner
@@ -83,7 +83,7 @@ This registers two scheduled tasks and starts the app.
 
 ## 6. Put it on the internet
 
-In the same administrator window:
+In the administrator window the installer opened (its title starts with *Administrator:*):
 
 ```powershell
 tailscale funnel --bg 3000
@@ -102,13 +102,13 @@ Test it from your phone **on mobile data, not Wi-Fi**, by opening your address. 
 
 ## Everyday commands
 
-Run these in an **administrator** PowerShell in `C:\BlevingPlanner`.
+Run these in PowerShell in `C:\BlevingPlanner`. The scripts ask for administrator rights themselves when they need them.
 
 | What | Command |
 |---|---|
 | Update to the latest version from GitHub | `powershell -ExecutionPolicy Bypass -File deploy\windows\update.ps1` |
 | Stop the app | `powershell -ExecutionPolicy Bypass -File deploy\windows\stop.ps1` |
-| Start it again | `Start-ScheduledTask BlevingPlanner` |
+| Start it again | `Start-ScheduledTask BlevingPlanner` (administrator window) |
 | Back up right now | `npm run backup` |
 | Is Funnel on? | `tailscale funnel status` |
 | Remove everything (keeps your data) | `powershell -ExecutionPolicy Bypass -File deploy\windows\uninstall.ps1` |
