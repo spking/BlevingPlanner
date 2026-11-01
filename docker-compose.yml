@@ -1,0 +1,17 @@
+# For Linux/macOS hosts with Docker. (On Windows, see DEPLOY-WINDOWS.md instead.)
+#   cp config.example.env config.env   # then edit it
+#   docker compose up -d --build
+services:
+  meals:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file: config.env
+    environment:
+      DATA_DIR: /data
+      HOST: 0.0.0.0   # inside the container; the port mapping above keeps it local to the host
+    volumes:
+      - meal-data:/data
+volumes:
+  meal-data:

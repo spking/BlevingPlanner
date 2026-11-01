@@ -1,0 +1,12 @@
+{
+  "name": "blevingplanner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A small shared meal planner with shopping lists and an Apple Calendar subscription feed.",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning --env-file-if-exists=config.env server.js",
+    "backup": "node --disable-warning=ExperimentalWarning --env-file-if-exists=config.env scripts/backup.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  }
+}
