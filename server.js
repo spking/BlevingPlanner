@@ -110,6 +110,11 @@ function createApp({ store, password = '', publicUrl = '', calendarName = 'Meals
       if (!Array.isArray(ids) || !ids.length || ids.length > 1000) throw new HttpError(400, 'ids must be a non-empty list');
       store.setInStock(ids, Boolean(inStock));
     }],
+    ['PUT', /^\/api\/list$/, async (req) => {
+      const { ids, on_list: onList } = await readJson(req);
+      if (!Array.isArray(ids) || !ids.length || ids.length > 1000) throw new HttpError(400, 'ids must be a non-empty list');
+      store.setOnList(ids, Boolean(onList));
+    }],
     ['PUT', /^\/api\/ingredients\/(\d+)$/, async (req, res, [id]) => store.updateIngredient(id, await readJson(req))],
     ['DELETE', /^\/api\/ingredients\/(\d+)$/, (req, res, [id]) => store.deleteIngredient(id)],
 

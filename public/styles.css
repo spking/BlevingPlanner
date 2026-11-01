@@ -281,3 +281,25 @@ select.field.compact { width: auto; min-height: 38px; padding: 4px 32px 4px 10px
   .topbar-left .icon-btn span { display: none; }
   .topbar h1 { max-width: 52vw; }
 }
+
+/* ---------- Keyboard-proof sheets ---------- */
+html.sheet-open, html.sheet-open body { overflow: hidden; }
+.sheet.tall {
+  /* Pinned to the top of the visible area and sized to it, so the keyboard opening/closing doesn't move anything. */
+  margin: calc(var(--vvtop, 0px) + var(--safe-t) + 12px) auto 0;
+  height: calc(var(--vvh, 100dvh) - var(--safe-t) - 12px);
+  max-height: none;
+}
+.sheet.tall .sheet-inner { height: 100%; display: flex; flex-direction: column; padding-bottom: max(12px, var(--safe-b)); }
+.sheet.tall .sheet-inner > * { flex: none; }
+.sheet.tall .sheet-inner > .scroll { flex: 1 1 auto; min-height: 80px; max-height: none; }
+.sheet.tall .search { margin-bottom: 10px; }
+
+/* ---------- Hand-added list items / Reminders ---------- */
+.btn.on-list { color: var(--accent); border-color: var(--accent); }
+.item-row .remove { margin-left: 2px; }
+.howto { margin: 14px 4px 0; font-size: 15px; }
+.howto summary { color: var(--accent); font-weight: 600; cursor: pointer; padding: 6px 0; }
+.howto p { margin: 8px 0; }
+#listToggle { margin-top: 10px; }
+.toolbar .btn.primary[data-action=share-list] { flex-basis: 100%; }

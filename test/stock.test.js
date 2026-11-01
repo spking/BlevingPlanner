@@ -91,7 +91,7 @@ test('a v2 database upgrades to v3 without losing data', () => {
   const [peas] = store.getState().ingredients;
   assert.equal(peas.frozen, true);
   assert.equal(peas.in_stock, false);
-  assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 3);
+  assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 4);
   store.db.close();
   fs.rmSync(dir, { recursive: true });
 });

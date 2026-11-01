@@ -4,7 +4,7 @@ A small, phone-friendly web app for two people to plan meals together:
 
 - **Ingredients**: everything you cook with, grouped by supermarket section. Tap **At home?** to mark what you already have; this is shared between your phones.
 - **Meals**: your recipes, each with ingredients, amounts and notes.
-- **Calendar**: pick a meal for each day, see two weeks at a time, and build a **shopping list** for any date range. It splits into *To buy* and *Already at home*, and only *To buy* is copied or shared.
+- **Calendar**: pick a meal for each day, see two weeks at a time, and build a **shopping list** for any date range. It splits into *To buy* and *Already at home*, and only *To buy* is copied or shared. To put something on the list that no meal uses (milk, toilet paper), open the ingredient and tap **Add to shopping list**.
 - **Apple Calendar feed**: subscribe once, and planned meals show up as all-day events with the ingredients in the notes.
 
 It has no third-party dependencies. It runs on Node.js ≥ 22.13 with the built-in SQLite, and all data is kept in a single file (`data/meal-planner.db`).
@@ -47,6 +47,19 @@ Back up `meal-planner.db` occasionally. It's the only thing that holds your data
 2. Calendar tab → **Export** → **Subscribe in Calendar**. Or on a Mac: Calendar → File → New Calendar Subscription, with Location set to **iCloud** so it syncs to your iPhone.
    Each of you subscribes on your own Apple ID, because subscribed calendars can't be shared like an iCloud calendar.
 3. Anyone who has the calendar link can *read* your plan. If it leaks, use **Reset link** and subscribe again.
+
+## Sending the shopping list to Apple Reminders
+
+The list is copied and shared as **one item per line**, with no title, headings or bullets. That's the shape Reminders needs; grocery-type lists sort items into sections themselves.
+
+Pasting multi-line text into Reminders doesn't reliably create one reminder per line. Depending on iOS version and where the text came from, it can land as a single reminder. **Send to Reminders** therefore uses a small Shortcut, set up once on each iPhone in the Shortcuts app:
+
+1. **Receive** *Text* from *Share Sheet*. In the shortcut's ⓘ settings, turn on *Show in Share Sheet*.
+2. **Split Text** *Shortcut Input* by *New Lines*.
+3. **Repeat with Each** item in *Split Text*.
+4. Inside the repeat: **Add New Reminder** *Repeat Item* to your shopping list (e.g. *Family Shopping*).
+
+Then tap **Send to Reminders** on the shopping list and choose the shortcut. Items already ticked as in the basket aren't sent.
 
 ## Freezer reminders
 

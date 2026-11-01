@@ -117,14 +117,37 @@ function toast(message, isError = false) {
 
 const sheet = $('#sheet');
 let sheetCtx = null;
+/**
+ * ctx.tall: a full-height sheet pinned to the top of the *visible* screen. Use it for sheets with a search box:
+ * when the iPhone keyboard opens or closes, the header and list stay where they are, so a tap can't land on
+ * something that moved under your finger.
+ */
 function openSheet(html, ctx = {}) {
   sheetCtx = ctx;
+  sheet.classList.toggle('tall', Boolean(ctx.tall));
   sheet.innerHTML = `<div class="sheet-inner"><div class="grabber"></div>${html}</div>`;
   if (!sheet.open) sheet.showModal();
+  document.documentElement.classList.add('sheet-open');
   ctx.mount?.(sheet);
 }
 function closeSheet() { if (sheet.open) sheet.close(); }
-sheet.addEventListener('close', () => { sheet.innerHTML = ''; sheetCtx = null; });
+sheet.addEventListener('close', () => {
+  sheet.innerHTML = '';
+  sheetCtx = null;
+  document.documentElement.classList.remove('sheet-open');
+});
+
+// Track the part of the screen not covered by the keyboard (iOS doesn't shrink the page for it).
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const sync = () => {
+    document.documentElement.style.setProperty('--vvh', `${Math.round(vv.height)}px`);
+    document.documentElement.style.setProperty('--vvtop', `${Math.round(vv.offsetTop)}px`);
+  };
+  vv.addEventListener('resize', sync);
+  vv.addEventListener('scroll', sync);
+  sync();
+}
 // Tapping the dimmed backdrop closes the sheet.
 sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
 const sheetHead = (title, closeLabel = 'Done') =>
@@ -266,20 +289,39 @@ function drawIngredientList() {
     if (!group.length) return '';
     return `<div class="group-title">${esc(cat)}</div><ul class="list">${group.map((i) => `
       <li class="item-row"><button type="button" class="row" data-action="edit-ingredient" data-id="${i.id}">
-        <div class="row-main"><div class="row-title">${esc(i.name)}${i.frozen ? ` ${SNOW}` : ''}</div>
+        <div class="row-main"><div class="row-title">${esc(i.name)}${i.frozen ? ` ${SNOW}` : ''}${i.on_list ? ' <span class="badge">On list</span>' : ''}</div>
           ${usage.get(i.id) ? `<div class="row-sub">Used in ${plural(usage.get(i.id), 'meal')}</div>` : ''}</div>
         </button>${stockPill(i)}</li>`).join('')}</ul>`;
   }).join('');
 }
 
 actions['add-ingredient'] = (el) => openAddIngredient(el.dataset.prefill || '');
+const listButton = (ing) => ing.on_list
+  ? `<button type="button" class="btn block on-list" data-action="toggle-list" data-id="${ing.id}">✓ On the shopping list · Remove</button>`
+  : `<button type="button" class="btn block" data-action="toggle-list" data-id="${ing.id}">＋ Add to shopping list</button>`;
+
+actions['toggle-list'] = async (el) => {
+  const ing = idx.ing.get(Number(el.dataset.id));
+  if (!ing || el.disabled) return;
+  el.disabled = true;
+  try { await mutate('PUT', '/api/list', { ids: [ing.id], on_list: !ing.on_list }); } catch { el.disabled = false; return; }
+  const fresh = idx.ing.get(ing.id);
+  toast(fresh.on_list ? `${fresh.name} added to the shopping list` : `${fresh.name} removed from the shopping list`);
+  const holder = $('#listToggle');
+  if (holder) holder.innerHTML = listButton(fresh); // update in place, so unsaved edits in the form stay
+  const route = parseRoute();
+  if (route.name === 'ingredients') drawIngredientList();
+  else if (route.name === 'shopping') renderShopping(route);
+};
+
 actions['ing-filter'] = (el) => { ui.ingFilter = el.dataset.filter; drawIngredientList(); };
 
 actions['toggle-stock'] = async (el) => {
   const ing = idx.ing.get(Number(el.dataset.id));
   if (!ing || el.disabled) return;
   el.disabled = true; // ignore double taps while saving
-  try { await mutate('PUT', '/api/stock', { ids: [ing.id], in_stock: !ing.in_stock }); } catch { el.disabled = false; return; }
+  const value = el.dataset.set ? el.dataset.set === '1' : !ing.in_stock;
+  try { await mutate('PUT', '/api/stock', { ids: [ing.id], in_stock: value }); } catch { el.disabled = false; return; }
   const route = parseRoute();
   if (route.name === 'ingredients') drawIngredientList();
   else if (route.name === 'shopping') renderShopping(route);
@@ -299,6 +341,7 @@ function openAddIngredient(prefill = '') {
     </form>
     <div class="label">Saved ingredients</div>
     <div class="scroll"><ul class="list" id="savedList"></ul></div>`, {
+    tall: true,
     mount(root) {
       const form = $('#addIngForm', root);
       const input = form.elements.name;
@@ -349,6 +392,7 @@ actions['edit-ingredient'] = (el) => {
       ${frozenToggle(ing.frozen)}
       <button class="btn primary block" type="submit">Save</button>
     </form>
+    <div id="listToggle">${listButton(ing)}</div>
     <p class="muted">${usedIn.length ? `Used in: ${usedIn.map((m) => esc(m.name)).join(', ')}` : 'Not used in any meals yet.'}</p>
     <button type="button" class="btn danger block" data-action="delete-ingredient" data-id="${ing.id}">Delete ingredient</button>`, {
     mount(root) {
@@ -590,6 +634,7 @@ actions['open-ing-picker'] = () => {
     ${sheetHead('Add ingredients')}
     ${searchBox('pickSearch', 'Search or type a new ingredient')}
     <div class="scroll"><ul class="list" id="pickList"></ul></div>`, {
+    tall: true,
     mount(root) {
       const input = $('#pickSearch', root);
       input.addEventListener('input', drawPicker);
@@ -598,10 +643,9 @@ actions['open-ing-picker'] = () => {
         e.preventDefault();
         // Enter picks the single obvious choice: the exact match, else "create".
         const exact = state.ingredients.find((i) => norm(i.name) === norm(input.value));
-        if (exact) togglePick(exact.id); else if (input.value.trim()) actions['create-ing']();
+        if (exact) togglePick(exact.id, true); else if (input.value.trim()) createPickedIngredient(true);
       });
-      drawPicker();
-      input.focus();
+      drawPicker(); // no auto-focus: the keyboard only opens when you tap the search box
     },
   });
 };
@@ -632,28 +676,33 @@ function drawPicker() {
   $('#pickCategory')?.addEventListener('change', (e) => { ui.lastCategory = e.target.value; });
 }
 
-function togglePick(ingredientId) {
+/** keepTyping: picked with the Return key, so keep the keyboard up for the next one; a tap closes it. */
+function togglePick(ingredientId, keepTyping = false) {
   const i = draft.ingredients.findIndex((x) => x.ingredient_id === ingredientId);
   if (i >= 0) draft.ingredients.splice(i, 1);
   else draft.ingredients.push({ ingredient_id: ingredientId, quantity: '' });
   drawMealIngredients();
   flushSave();
   const input = $('#pickSearch');
-  if (input && input.value) { input.value = ''; input.focus(); }
+  if (input) {
+    input.value = '';
+    if (keepTyping) input.focus(); else input.blur();
+  }
   drawPicker();
 }
 
 actions['pick-ing'] = (el) => togglePick(Number(el.dataset.id));
 
-actions['create-ing'] = async () => {
+actions['create-ing'] = () => createPickedIngredient(false);
+async function createPickedIngredient(keepTyping) {
   const name = $('#pickSearch')?.value.trim();
   if (!name || !draft) return;
   const category = $('#pickCategory')?.value || 'Other';
   let res;
   try { res = await mutate('POST', '/api/ingredients', { name, category }); } catch { return; }
   ui.lastCategory = category;
-  togglePick(res.id);
-};
+  togglePick(res.id, keepTyping);
+}
 
 /* =========================================================================
    Calendar page
@@ -723,6 +772,7 @@ actions['pick-day'] = (el) => {
         <a class="btn" href="#/meals/${current}" data-action="close-and-go">View meal</a>
         <button type="button" class="btn danger" data-action="clear-day">Clear day</button></div>` : ''}`, {
     date,
+    tall: true,
     mount(root) {
       const input = $('#mealPickSearch', root);
       input.addEventListener('input', drawMealPicker);
@@ -816,21 +866,28 @@ function buildShoppingList(from, to) {
       items.get(ingredient_id).uses.push({ meal, count, quantity });
     }
   }
+  // Hand-added items ("milk") are on the list whatever the dates or meals.
+  for (const ingredient of state.ingredients) {
+    if (!ingredient.on_list) continue;
+    if (!items.has(ingredient.id)) items.set(ingredient.id, { ingredient, uses: [] });
+    items.get(ingredient.id).extra = true;
+  }
   const byName = (a, b) => a.ingredient.name.localeCompare(b.ingredient.name);
   const all = [...items.values()];
-  const toBuy = all.filter((i) => !i.ingredient.in_stock);
+  const toBuy = all.filter((i) => i.extra || !i.ingredient.in_stock);
   // "To buy" is grouped by aisle; "Already at home" is a flat list.
   const groups = state.categories.map((category) => ({
     category,
     items: toBuy.filter((i) => i.ingredient.category === category).sort(byName),
   })).filter((g) => g.items.length);
-  const atHome = all.filter((i) => i.ingredient.in_stock).sort(byName);
+  const atHome = all.filter((i) => !i.extra && i.ingredient.in_stock).sort(byName);
   return { mealCounts, groups, atHome, toBuyCount: toBuy.length };
 }
 
-const describeUses = (uses) => uses
-  .map((u) => `${u.meal.name}${u.count > 1 ? ` ×${u.count}` : ''}${u.quantity ? `: ${u.quantity}` : ''}`)
-  .join(' · ');
+const describeUses = (uses, extra = false) => [
+  ...uses.map((u) => `${u.meal.name}${u.count > 1 ? ` ×${u.count}` : ''}${u.quantity ? `: ${u.quantity}` : ''}`),
+  ...(extra ? ['Added by hand'] : []),
+].join(' · ');
 
 function renderShopping(route) {
   const from = isYmd(route.from) ? route.from : ymd(today());
@@ -841,26 +898,41 @@ function renderShopping(route) {
   const noIngredients = [...mealCounts.keys()].map((id) => idx.meal.get(id)).filter((m) => !m.ingredients.length);
 
   let body;
-  if (!mealCounts.size) {
-    body = `<div class="empty"><strong>Nothing planned</strong>No meals are planned between these dates. <a href="#/calendar">Plan some meals</a></div>`;
+  if (!mealCounts.size && !toBuyCount) {
+    body = `<div class="empty"><strong>Nothing planned</strong>No meals are planned between these dates. <a href="#/calendar">Plan some meals</a>,
+      or add things by hand from an ingredient's edit screen.</div>`;
   } else {
     const mealsLine = [...mealCounts].map(([id, n]) => `${esc(idx.meal.get(id).name)}${n > 1 ? ` ×${n}` : ''}`).join(', ');
     body = `
-      <p class="muted">${plural([...mealCounts.values()].reduce((a, b) => a + b, 0), 'meal')}: ${mealsLine}</p>
+      <p class="muted">${mealCounts.size ? `${plural([...mealCounts.values()].reduce((a, b) => a + b, 0), 'meal')}: ${mealsLine}` : 'No meals planned between these dates.'}</p>
       ${noIngredients.length ? `<p class="hint warn">No ingredients added yet for: ${noIngredients.map((m) => `<a href="#/meals/${m.id}">${esc(m.name)}</a>`).join(', ')}</p>` : ''}
       <h2 class="section-head">To buy <span class="badge">${toBuyCount}</span></h2>
-      ${toBuyCount ? groups.map((g) => `<div class="group-title">${esc(g.category)}</div><ul class="list">${g.items.map(({ ingredient, uses }) => `
+      ${toBuyCount ? groups.map((g) => `<div class="group-title">${esc(g.category)}</div><ul class="list">${g.items.map(({ ingredient, uses, extra }) => `
         <li class="item-row"><label class="check-row ${checked.has(ingredient.id) ? 'done' : ''}">
           <input type="checkbox" data-id="${ingredient.id}" ${checked.has(ingredient.id) ? 'checked' : ''} aria-label="${esc(ingredient.name)} in the basket">
-          <div class="row-main"><div class="row-title">${esc(ingredient.name)}</div><div class="row-sub">${esc(describeUses(uses))}</div></div>
-        </label>${stockPill(ingredient)}</li>`).join('')}</ul>`).join('')
+          <div class="row-main"><div class="row-title">${esc(ingredient.name)}</div><div class="row-sub">${esc(describeUses(uses, extra))}</div></div>
+        </label>${extra
+          ? `<button type="button" class="have" data-action="toggle-stock" data-set="1" data-id="${ingredient.id}" aria-label="${esc(ingredient.name)}: got it, at home">At home?</button>
+             <button type="button" class="remove" data-action="toggle-list" data-id="${ingredient.id}" aria-label="Remove ${esc(ingredient.name)} from the list">×</button>`
+          : stockPill(ingredient)}</li>`).join('')}</ul>`).join('')
         : '<div class="empty compact">You have everything for these meals at home.</div>'}
       ${toBuyCount ? `<p class="muted center" id="shopCount"></p>
       <div class="toolbar">
+        ${navigator.share ? '<button type="button" class="btn primary" data-action="share-list">Send to Reminders</button>' : ''}
         <button type="button" class="btn" data-action="copy-list">Copy list</button>
-        ${navigator.share ? '<button type="button" class="btn" data-action="share-list">Share…</button>' : ''}
         <button type="button" class="btn" data-action="uncheck-all">Uncheck all</button>
-      </div>` : ''}
+      </div>
+      <details class="howto">
+        <summary>Set up “Send to Reminders” (once per iPhone)</summary>
+        <p>A small Shortcut adds every line as its own reminder in your shopping list. In the <b>Shortcuts</b> app, tap <b>+</b> and add these actions:</p>
+        <ol class="steps">
+          <li><b>Receive</b> <i>Text</i> from <i>Share Sheet</i> (tap the ⓘ button → turn on <b>Show in Share Sheet</b>).</li>
+          <li><b>Split Text</b> <i>Shortcut Input</i> by <i>New Lines</i>.</li>
+          <li><b>Repeat with Each</b> item in <i>Split Text</i>, and inside it:</li>
+          <li><b>Add New Reminder</b> <i>Repeat Item</i> to your list, e.g. <i>Family Shopping</i>.</li>
+        </ol>
+        <p>Name it e.g. “Add to Shopping”. Then tap <b>Send to Reminders</b> above and pick it in the share sheet. Items already in the basket aren't sent.</p>
+      </details>` : ''}
       ${atHome.length ? `
       <h2 class="section-head">Already at home <span class="badge muted-badge">${atHome.length}</span></h2>
       <p class="hint">Left out of the list you copy or share. Tap <b>✓ At home</b> to move something back to <i>To buy</i>.</p>
@@ -911,23 +983,26 @@ function renderShopping(route) {
 }
 
 let shoppingCtx = null;
+/**
+ * Reminders format: exactly one item per line, nothing else — no title, headings, bullets or blank lines.
+ * Each line becomes one reminder (Reminders' grocery lists sort them into sections themselves).
+ */
 function shoppingText() {
-  const { from, to, groups, checked } = shoppingCtx;
-  const lines = [`Shopping list ${fmtShort(parseYmd(from))} – ${fmtShort(parseYmd(to))}`];
+  const { groups, checked } = shoppingCtx;
+  const lines = [];
   for (const g of groups) {
-    const remaining = g.items.filter((i) => !checked.has(i.ingredient.id));
-    if (!remaining.length) continue;
-    lines.push('', g.category.toUpperCase());
-    for (const { ingredient, uses } of remaining) {
+    for (const { ingredient, uses } of g.items) {
+      if (checked.has(ingredient.id)) continue; // already in the basket
       const qty = uses.filter((u) => u.quantity).map((u) => `${u.quantity}${u.count > 1 ? ` ×${u.count}` : ''}`).join(' + ');
-      lines.push(`- ${ingredient.name}${qty ? ` (${qty})` : ''}`);
+      lines.push(`${ingredient.name}${qty ? ` (${qty})` : ''}`.replace(/\s+/g, ' ').trim());
     }
   }
   return lines.join('\n');
 }
 actions['copy-list'] = () => copyText(shoppingText());
 actions['share-list'] = async () => {
-  try { await navigator.share({ title: 'Shopping list', text: shoppingText() }); } catch { /* cancelled */ }
+  // Text only (no title/url), so the Shortcut receives exactly the list.
+  try { await navigator.share({ text: shoppingText() }); } catch { /* cancelled */ }
 };
 actions['uncheck-all'] = () => {
   const { from, to } = shoppingCtx;
