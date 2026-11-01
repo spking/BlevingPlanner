@@ -145,6 +145,25 @@ const frozenToggle = (checked) => `<label class="toggle-row">
     <input type="checkbox" class="checkbox" name="frozen" ${checked ? 'checked' : ''}>
     <span><b>Kept frozen</b><br><span class="muted">Remind us the evening before to take it out of the freezer</span></span>
   </label>`;
+/** The one-tap "we have this at home" toggle, used on the Ingredients page and the shopping list. */
+const stockPill = (ing) => `<button type="button" class="have${ing.in_stock ? ' on' : ''}" data-action="toggle-stock" data-id="${ing.id}"
+    aria-pressed="${ing.in_stock}" aria-label="${esc(ing.name)}: ${ing.in_stock ? 'at home' : 'not at home'}">${ing.in_stock ? '✓ At home' : 'At home?'}</button>`;
+// in_stock_since comes from SQLite as UTC "YYYY-MM-DD HH:MM:SS".
+const stockAgeDays = (ing) => {
+  if (!ing.in_stock || !ing.in_stock_since) return null;
+  const marked = new Date(ing.in_stock_since.replace(' ', 'T') + 'Z');
+  marked.setHours(0, 0, 0, 0);
+  return Math.round((today() - marked) / 86400000);
+};
+const STALE_DAYS = 14;
+const markedText = (ing) => {
+  const days = stockAgeDays(ing);
+  if (days === null) return '';
+  if (days <= 0) return 'Marked today';
+  if (days === 1) return 'Marked yesterday';
+  if (days < 14) return `Marked ${days} days ago`;
+  return `Marked ${Math.round(days / 7)} weeks ago — still there?`;
+};
 /** Frozen ingredients in a meal, for the thaw reminder. */
 const frozenIn = (meal) => (meal ? meal.ingredients.map((i) => idx.ing.get(i.ingredient_id)).filter((i) => i && i.frozen) : []);
 const categoryOptions = (selected) =>
@@ -173,6 +192,7 @@ async function copyText(text) {
    ========================================================================= */
 const ui = {
   ingQuery: '',
+  ingFilter: 'all', // all | home | out
   mealQuery: '',
   lastCategory: 'Fruit & Veg',
   calStart: null, // Date; null = today
@@ -211,7 +231,7 @@ actions['close-sheet'] = closeSheet;
    ========================================================================= */
 function renderIngredients() {
   setTop({ title: 'Ingredients' });
-  $('#view').innerHTML = `${searchBox('ingSearch', 'Search ingredients', ui.ingQuery)}<div id="ingList"></div>${fab('add-ingredient', 'Add ingredient')}`;
+  $('#view').innerHTML = `${searchBox('ingSearch', 'Search ingredients', ui.ingQuery)}<div id="ingFilter"></div><div id="ingList"></div>${fab('add-ingredient', 'Add ingredient')}`;
   $('#ingSearch').addEventListener('input', (e) => { ui.ingQuery = e.target.value; drawIngredientList(); });
   drawIngredientList();
 }
@@ -225,7 +245,18 @@ function drawIngredientList() {
   const q = norm(ui.ingQuery);
   const usage = new Map();
   for (const m of state.meals) for (const i of m.ingredients) usage.set(i.ingredient_id, (usage.get(i.ingredient_id) || 0) + 1);
-  const items = state.ingredients.filter((i) => norm(i.name).includes(q));
+  const atHome = state.ingredients.filter((i) => i.in_stock).length;
+  const filters = [['all', 'All', state.ingredients.length], ['home', 'At home', atHome], ['out', 'Not at home', state.ingredients.length - atHome]];
+  $('#ingFilter').innerHTML = `<div class="segmented" role="group" aria-label="Show">${filters.map(([key, label, n]) =>
+    `<button type="button" data-action="ing-filter" data-filter="${key}" aria-pressed="${ui.ingFilter === key}" class="${ui.ingFilter === key ? 'on' : ''}">${label} <span>${n}</span></button>`).join('')}</div>`;
+  const items = state.ingredients.filter((i) => norm(i.name).includes(q)
+    && (ui.ingFilter === 'all' || (ui.ingFilter === 'home') === i.in_stock));
+  if (!items.length && ui.ingFilter !== 'all' && !q) {
+    el.innerHTML = `<div class="empty">${ui.ingFilter === 'home'
+      ? 'Nothing is marked as at home yet.<br>Tap <b>At home?</b> next to an ingredient when you have it.'
+      : 'Everything is marked as at home.'}</div>`;
+    return;
+  }
   if (!items.length) {
     el.innerHTML = `<div class="empty">No ingredients match “${esc(ui.ingQuery)}”.<br><br><button class="btn primary" data-action="add-ingredient" data-prefill="${esc(ui.ingQuery)}">Add “${esc(ui.ingQuery.trim())}”</button></div>`;
     return;
@@ -234,14 +265,25 @@ function drawIngredientList() {
     const group = items.filter((i) => i.category === cat);
     if (!group.length) return '';
     return `<div class="group-title">${esc(cat)}</div><ul class="list">${group.map((i) => `
-      <li><button type="button" class="row" data-action="edit-ingredient" data-id="${i.id}">
+      <li class="item-row"><button type="button" class="row" data-action="edit-ingredient" data-id="${i.id}">
         <div class="row-main"><div class="row-title">${esc(i.name)}${i.frozen ? ` ${SNOW}` : ''}</div>
           ${usage.get(i.id) ? `<div class="row-sub">Used in ${plural(usage.get(i.id), 'meal')}</div>` : ''}</div>
-        <span class="chev"></span></button></li>`).join('')}</ul>`;
+        </button>${stockPill(i)}</li>`).join('')}</ul>`;
   }).join('');
 }
 
 actions['add-ingredient'] = (el) => openAddIngredient(el.dataset.prefill || '');
+actions['ing-filter'] = (el) => { ui.ingFilter = el.dataset.filter; drawIngredientList(); };
+
+actions['toggle-stock'] = async (el) => {
+  const ing = idx.ing.get(Number(el.dataset.id));
+  if (!ing || el.disabled) return;
+  el.disabled = true; // ignore double taps while saving
+  try { await mutate('PUT', '/api/stock', { ids: [ing.id], in_stock: !ing.in_stock }); } catch { el.disabled = false; return; }
+  const route = parseRoute();
+  if (route.name === 'ingredients') drawIngredientList();
+  else if (route.name === 'shopping') renderShopping(route);
+};
 
 function openAddIngredient(prefill = '') {
   openSheet(`
@@ -774,12 +816,16 @@ function buildShoppingList(from, to) {
       items.get(ingredient_id).uses.push({ meal, count, quantity });
     }
   }
+  const byName = (a, b) => a.ingredient.name.localeCompare(b.ingredient.name);
+  const all = [...items.values()];
+  const toBuy = all.filter((i) => !i.ingredient.in_stock);
+  // "To buy" is grouped by aisle; "Already at home" is a flat list.
   const groups = state.categories.map((category) => ({
     category,
-    items: [...items.values()].filter((i) => i.ingredient.category === category)
-      .sort((a, b) => a.ingredient.name.localeCompare(b.ingredient.name)),
+    items: toBuy.filter((i) => i.ingredient.category === category).sort(byName),
   })).filter((g) => g.items.length);
-  return { mealCounts, groups, total: items.size };
+  const atHome = all.filter((i) => i.ingredient.in_stock).sort(byName);
+  return { mealCounts, groups, atHome, toBuyCount: toBuy.length };
 }
 
 const describeUses = (uses) => uses
@@ -790,7 +836,7 @@ function renderShopping(route) {
   const from = isYmd(route.from) ? route.from : ymd(today());
   const to = isYmd(route.to) && route.to >= from ? route.to : ymd(addDays(parseYmd(from), PERIOD_DAYS - 1));
   setTop({ title: 'Shopping list', left: backLink('#/calendar', 'Calendar') });
-  const { mealCounts, groups, total } = buildShoppingList(from, to);
+  const { mealCounts, groups, atHome, toBuyCount } = buildShoppingList(from, to);
   const checked = loadChecked(from, to);
   const noIngredients = [...mealCounts.keys()].map((id) => idx.meal.get(id)).filter((m) => !m.ingredients.length);
 
@@ -802,17 +848,30 @@ function renderShopping(route) {
     body = `
       <p class="muted">${plural([...mealCounts.values()].reduce((a, b) => a + b, 0), 'meal')}: ${mealsLine}</p>
       ${noIngredients.length ? `<p class="hint warn">No ingredients added yet for: ${noIngredients.map((m) => `<a href="#/meals/${m.id}">${esc(m.name)}</a>`).join(', ')}</p>` : ''}
-      ${groups.map((g) => `<div class="group-title">${esc(g.category)}</div><ul class="list">${g.items.map(({ ingredient, uses }) => `
-        <li><label class="check-row ${checked.has(ingredient.id) ? 'done' : ''}">
-          <input type="checkbox" data-id="${ingredient.id}" ${checked.has(ingredient.id) ? 'checked' : ''}>
+      <h2 class="section-head">To buy <span class="badge">${toBuyCount}</span></h2>
+      ${toBuyCount ? groups.map((g) => `<div class="group-title">${esc(g.category)}</div><ul class="list">${g.items.map(({ ingredient, uses }) => `
+        <li class="item-row"><label class="check-row ${checked.has(ingredient.id) ? 'done' : ''}">
+          <input type="checkbox" data-id="${ingredient.id}" ${checked.has(ingredient.id) ? 'checked' : ''} aria-label="${esc(ingredient.name)} in the basket">
           <div class="row-main"><div class="row-title">${esc(ingredient.name)}</div><div class="row-sub">${esc(describeUses(uses))}</div></div>
-        </label></li>`).join('')}</ul>`).join('')}
-      <p class="muted center" id="shopCount"></p>
+        </label>${stockPill(ingredient)}</li>`).join('')}</ul>`).join('')
+        : '<div class="empty compact">You have everything for these meals at home.</div>'}
+      ${toBuyCount ? `<p class="muted center" id="shopCount"></p>
       <div class="toolbar">
         <button type="button" class="btn" data-action="copy-list">Copy list</button>
         ${navigator.share ? '<button type="button" class="btn" data-action="share-list">Share…</button>' : ''}
         <button type="button" class="btn" data-action="uncheck-all">Uncheck all</button>
-      </div>`;
+      </div>` : ''}
+      ${atHome.length ? `
+      <h2 class="section-head">Already at home <span class="badge muted-badge">${atHome.length}</span></h2>
+      <p class="hint">Left out of the list you copy or share. Tap <b>✓ At home</b> to move something back to <i>To buy</i>.</p>
+      <ul class="list">${atHome.map(({ ingredient, uses }) => {
+        const stale = stockAgeDays(ingredient) >= STALE_DAYS;
+        return `<li class="item-row"><div class="row">
+          <div class="row-main"><div class="row-title">${esc(ingredient.name)}</div>
+            <div class="row-sub">${esc(describeUses(uses))}</div>
+            <div class="row-sub${stale ? ' stale' : ''}">${esc(markedText(ingredient))}</div></div>
+        </div>${stockPill(ingredient)}</li>`;
+      }).join('')}</ul>` : ''}`;
   }
 
   $('#view').innerHTML = `
@@ -836,7 +895,8 @@ function renderShopping(route) {
   const listIds = new Set(groups.flatMap((g) => g.items.map((i) => i.ingredient.id)));
   const updateCount = () => {
     const el = $('#shopCount');
-    if (el) el.textContent = `${total - [...checked].filter((id) => listIds.has(id)).length} of ${plural(total, 'item')} left`;
+    const inBasket = [...checked].filter((id) => listIds.has(id)).length;
+    if (el) el.textContent = inBasket ? `${toBuyCount - inBasket} of ${plural(toBuyCount, 'item')} left to get` : `${plural(toBuyCount, 'item')} to buy`;
   };
   $('#shopBody').addEventListener('change', (e) => {
     if (!e.target.matches('.check-row input')) return;

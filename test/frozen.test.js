@@ -91,8 +91,8 @@ test('an existing v1 database upgrades in place without losing data', () => {
     PRAGMA user_version = 1;`);
   old.close();
   const store = openStore(file);
-  assert.deepEqual(store.getState().ingredients.map((i) => [i.name, i.frozen]), [['Garlic', false]]);
-  assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 2);
+  assert.deepEqual(store.getState().ingredients.map((i) => [i.name, i.frozen, i.in_stock]), [['Garlic', false, false]]);
+  assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 3); // v1 -> v2 -> v3 in one go
   store.db.close();
   fs.rmSync(dir, { recursive: true });
 });

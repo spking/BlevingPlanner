@@ -255,3 +255,29 @@ select.field.compact { width: auto; min-height: 38px; padding: 4px 32px 4px 10px
 .checkbox { appearance: none; -webkit-appearance: none; flex: none; width: 24px; height: 24px; margin: 0; border: 2px solid var(--line); border-radius: 7px; display: grid; place-items: center; cursor: pointer; background: var(--surface); }
 .checkbox:checked { background: var(--accent); border-color: var(--accent); }
 .checkbox:checked::after { content: ""; width: 6px; height: 11px; border: solid var(--accent-text); border-width: 0 2.5px 2.5px 0; rotate: 45deg; translate: 0 -1px; }
+
+/* ---------- At home / to buy ---------- */
+.item-row { display: flex; align-items: center; padding-right: 10px; }
+.item-row > .row, .item-row > .check-row { flex: 1; min-width: 0; }
+.have {
+  flex: none; min-height: 34px; padding: 0 12px; border-radius: 99px; cursor: pointer;
+  border: 1.5px solid var(--line); background: transparent; color: var(--muted);
+  font-size: 14px; font-weight: 600; white-space: nowrap;
+}
+.have.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.have:disabled { opacity: .5; }
+.segmented { display: flex; gap: 4px; padding: 3px; margin: -2px 0 6px; background: var(--surface-2); border-radius: 12px; }
+.segmented button { flex: 1; min-height: 36px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; padding: 0 4px; }
+.segmented button span { font-weight: 500; opacity: .75; }
+.segmented button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgb(0 0 0 / .12); }
+.section-head { display: flex; align-items: center; gap: 8px; font-size: 20px; margin: 22px 4px 0; }
+.section-head .badge { font-size: 13px; }
+.muted-badge { background: var(--surface-2); color: var(--muted); }
+.row-sub.stale { color: var(--danger); }
+.empty.compact { padding: 20px 16px; }
+
+/* Narrow phones (iPhone SE): the back link shrinks to just its arrow so it doesn't crowd the title. */
+@media (max-width: 374px) {
+  .topbar-left .icon-btn span { display: none; }
+  .topbar h1 { max-width: 52vw; }
+}

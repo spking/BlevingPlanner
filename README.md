@@ -2,9 +2,9 @@
 
 A small, phone-friendly web app for two people to plan meals together:
 
-- **Ingredients**: everything you cook with, grouped by supermarket section.
+- **Ingredients**: everything you cook with, grouped by supermarket section. Tap **At home?** to mark what you already have; this is shared between your phones.
 - **Meals**: your recipes, each with ingredients, amounts and notes.
-- **Calendar**: pick a meal for each day, see two weeks at a time, and build a **shopping list** for any date range.
+- **Calendar**: pick a meal for each day, see two weeks at a time, and build a **shopping list** for any date range. It splits into *To buy* and *Already at home*, and only *To buy* is copied or shared.
 - **Apple Calendar feed**: subscribe once, and planned meals show up as all-day events with the ingredients in the notes.
 
 It has no third-party dependencies. It runs on Node.js ≥ 22.13 with the built-in SQLite, and all data is kept in a single file (`data/meal-planner.db`).
