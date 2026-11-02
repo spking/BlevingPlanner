@@ -708,7 +708,7 @@ async function createPickedIngredient(keepTyping) {
    Calendar page
    ========================================================================= */
 const PERIOD_DAYS = 14;
-const STEP_DAYS = 7;
+const STEP_DAYS = PERIOD_DAYS; // arrows move a whole period, so pages never overlap
 
 function calStart() { return ui.calStart || today(); }
 
