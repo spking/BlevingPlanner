@@ -102,13 +102,14 @@ Test it from your phone **on mobile data, not Wi-Fi**, by opening your address. 
 
 ## Everyday commands
 
-Run these in PowerShell in `C:\BlevingPlanner`. The scripts ask for administrator rights themselves when they need them.
+Run these in PowerShell in `C:\BlevingPlanner`, at the laptop or over SSH from your Mac (see below). Updating and restarting need **no administrator rights**.
 
 | What | Command |
 |---|---|
 | Update to the latest version from GitHub | `powershell -ExecutionPolicy Bypass -File deploy\windows\update.ps1` |
-| Stop the app | `powershell -ExecutionPolicy Bypass -File deploy\windows\stop.ps1` |
-| Start it again | `Start-ScheduledTask BlevingPlanner` (administrator window) |
+| Restart the app | `powershell -ExecutionPolicy Bypass -File deploy\windows\restart.ps1` |
+| Stop the app (administrator) | `powershell -ExecutionPolicy Bypass -File deploy\windows\stop.ps1` |
+| Start it again (administrator) | `Start-ScheduledTask BlevingPlanner` |
 | Back up right now | `npm run backup` |
 | Is Funnel on? | `tailscale funnel status` |
 | Remove everything (keeps your data) | `powershell -ExecutionPolicy Bypass -File deploy\windows\uninstall.ps1` |
@@ -122,6 +123,52 @@ Run these in PowerShell in `C:\BlevingPlanner`. The scripts ask for administrato
 2. Copy the backup file over `data\meal-planner.db`.
 3. Delete `data\meal-planner.db-wal` and `data\meal-planner.db-shm` if they exist.
 4. Start the app again.
+
+## Remote access from a Mac (SSH over Tailscale)
+
+With this set up, you run all the commands above from your Mac's Terminal with `ssh home`, from anywhere.
+
+1. **Laptop, administrator PowerShell:** install and start the SSH server. Run these one at a time:
+   ```powershell
+   Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+   ```
+   ```powershell
+   Start-Service sshd
+   ```
+   ```powershell
+   Set-Service sshd -StartupType Automatic
+   ```
+2. **Mac:** install Tailscale (same account). Create a key if `~/.ssh/id_ed25519.pub` doesn't exist yet, then copy it to the clipboard. Run these one at a time:
+   ```bash
+   ssh-keygen -t ed25519
+   ```
+   ```bash
+   pbcopy < ~/.ssh/id_ed25519.pub
+   ```
+   Get the line to the laptop (e.g. email it to yourself) and copy it there.
+3. **Laptop, administrator PowerShell:** your account is an administrator (`net localgroup administrators`), so Windows **only** reads keys from `C:\ProgramData\ssh\administrators_authorized_keys`, not from your user folder. Run these one at a time:
+   ```powershell
+   $key = (Get-Clipboard -Raw).Trim()
+   ```
+   ```powershell
+   Set-Content -Path C:\ProgramData\ssh\administrators_authorized_keys -Value $key -Encoding ascii
+   ```
+   ```powershell
+   icacls.exe "C:\ProgramData\ssh\administrators_authorized_keys" /inheritance:r /grant "Administrators:F" /grant "SYSTEM:F"
+   ```
+4. **Mac:** add this to `~/.ssh/config` (username = the part after `\` in `whoami` on the laptop):
+   ```
+   Host home
+     HostName 100.79.208.109
+     User solvi
+     IPQoS none
+   ```
+   `IPQoS none` prevents a "Broken pipe" error right after logging in. Then just `ssh home`, and type `powershell` once connected.
+
+Notes:
+- **Passwords don't work for SSH** with a Microsoft account set to Windows Hello sign-in. The key is the reliable way, and more secure.
+- **SSH sessions have limited rights** (`IsInRole('Administrator')` prints `False`). Windows does this deliberately for remote logins. It's why `update.ps1` and `restart.ps1` don't need administrator rights: they ask the background runner, which runs as SYSTEM, to do the restart.
+- **The runner itself only picks up changes when it restarts** (at boot, or `stop.ps1` + `Start-ScheduledTask` at the laptop). That's only needed when `run-server.ps1` itself changes.
 
 ## If something's wrong
 
